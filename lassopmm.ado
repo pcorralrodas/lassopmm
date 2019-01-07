@@ -138,7 +138,7 @@ qui{
 			mata: mu = sd[1,.]
 			mata: sd = sqrt(diagonal(sd[|2,1\.,.|]))'
 			
-			if (`i'==1)	mata: st_view(y=., .,"`depvar'", "`touse1'")
+			mata: st_view(y=., .,"`depvar'", "`touse1'")
 
 			
 			mata: st_view(x1=.,.,"`chosen'", "`touse2'")

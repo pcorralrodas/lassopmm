@@ -21,6 +21,7 @@ program define lassopmm, eclass byable(recall)
 		psu(varlist max=1 numeric)
 		seed(integer 12345)
 		NOIsily
+		EPSIlon(real 0.001)
 	];
 #delimit cr
 set more off
@@ -106,8 +107,8 @@ qui{
 		if (`i'!=1) use `mydata', clear
 			mata: st_view(myvar=., ., "`depvar' `_my_x' `wi'","`touse'")
 			mata: myvar[.,.] = myvar[ind[.,`i'],.]
-		if ("`noisily'"!="") noi:lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda')
-		else                 lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda')
+		if ("`noisily'"!="") noi:lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
+		else                 lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
 		tempname _beta BB
 		tempvar touse1 touse2
 		

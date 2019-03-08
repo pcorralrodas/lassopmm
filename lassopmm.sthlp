@@ -6,12 +6,14 @@
 {title:Title}
 
 {p2colset 5 24 26 2}{...}
-{p2col :{cmd:lassopmm} {hline 1}} PMM enabled Lasso regression for multiple imputation, command makes use of Wilbur Townsend's lassoregress command {p_end}
+{p2col :{cmd:lassopmm} {hline 1}} PMM enabled Lasso regression for multiple imputation, 
+command makes use of Wilbur Townsend's lassoregress command {p_end}
 {p2colreset}{...}
 
 {title:Syntax}
 
-{p 8 17 2}{opt lassopmm}   {depvar} [{indepvars}] {ifin} {weight} {cmd:,} uniqid(varlist) add(integer) [{it:options}]
+{p 8 17 2}{opt lassopmm}   {depvar} [{indepvars}] {ifin} {weight} {cmd:,} 
+uniqid(varlist) add(integer) [{it:options}]
 
 {synoptset 20 tabbed}{...}
 {synoptline}
@@ -24,13 +26,18 @@
 
 {syntab:{title:Optional}}
 
-{synopt:{opt SORTy}}method which takes a random draw of the observed dependent variable, sorts it and matches to the sorted yhat results for the non-observed data. When not specified, the default, pmm is used.{p_end}
+{synopt:{opt SORTy}}method which takes a random draw of the observed dependent variable, 
+sorts it and matches to the sorted yhat results for the non-observed data. When not specified, the default, pmm is used.{p_end}
 {synopt:{opt psu(varlist)}}varlist for psu bootstrapping of data{p_end}
-{synopt:{opt lambda(real)}}penalty placed on larger coefficients — by default found by cross-validation {p_end}
-{synopt:{opt numfolds(integer)}}number of folds used when cross-validating lambda or alpha — default is 10. {p_end}
-{synopt:{opt numlambda(integer)}}number of lambda tested when lambda is found by cross-validation{p_end}
+{synopt:{opt lambda(real)}}penalty placed on larger coefficients — by default found 
+by cross-validation {p_end}
+{synopt:{opt numfolds(integer)}}number of folds used when cross-validating lambda or 
+alpha — default is 10. {p_end}
+{synopt:{opt numlambda(integer)}}number of lambda tested when lambda is found by 
+cross-validation{p_end}
 {synopt:{opt knn(integer)}}number of closest observations to draw result from {p_end}
-{synopt:{opt seed(integer)}}Seed to ensure replicability, if not specified it uses the current seed's state. {p_end}
+{synopt:{opt seed(integer)}}Seed to ensure replicability, if not specified it uses 
+the current seed's state. {p_end}
 {synopt:{opt NOIsily}}Display results of lassoregress{p_end}
 
 {p 2 2 1}
@@ -39,41 +46,43 @@
 {cmd:mi set mlong} is allowed; see {help mi set}{break} 
 
 {title:Example}
-sysuse auto, clear
 
-gen psu = 7 if _n<74
-replace psu = 6 if _n<60
-replace psu = 5 if _n<50
-replace psu = 4 if _n<40
-replace psu = 3 if _n<30
-replace psu = 2 if _n<20
-replace psu = 1 if _n<10
+{p 6 10 1}.sysuse auto, clear{p_end}
 
-gen _numobs = _n
-preserve
-	sample 10
-	sum price
-	replace price = .
-		
-	tempfile uno
-	save `uno'
-restore
-append using `uno', gen(samples)
+{p 6 10 1}.gen psu = 7 if _n<74{p_end}
+{p 6 10 1}.replace psu = 6 if _n<60{p_end}
+{p 6 10 1}.replace psu = 5 if _n<50{p_end}
+{p 6 10 1}.replace psu = 4 if _n<40{p_end}
+{p 6 10 1}.replace psu = 3 if _n<30{p_end}
+{p 6 10 1}.replace psu = 2 if _n<20{p_end}
+{p 6 10 1}.replace psu = 1 if _n<10{p_end}
 
-gen _numobs11 = _n
+{p 6 10 1}.gen _numobs = _n{p_end}
+{p 6 10 1}.preserve{p_end}
+{p 6 10 1}.	sample 10{p_end}
+{p 6 10 1}.	sum price{p_end}
+{p 6 10 1}.	replace price = .{p_end}
 
-//Local with all candidate variables
-local _x mpg headroom trunk weight length turn displacement gear_ratio foreign
-//Local with dependent variable
-local _y price 
+{p 6 10 1}.tempfile uno{p_end}
+{p 6 10 1}.save `uno'{p_end}
+{p 6 10 1}.restore{p_end}
+{p 6 10 1}.append using `uno', gen(samples){p_end}
 
-mi set wide
+{p 6 10 1}.gen _numobs11 = _n{p_end}
 
-mi register imputed price 
+{p 6 10 1}//Local with all candidate variables{p_end}
+{p 6 10 1}.local _x mpg headroom trunk weight length turn displacement gear_ratio foreign{p_end}
+{p 6 10 1}//Local with dependent variable{p_end}
+{p 6 10 1}.local _y price {p_end}
 
-lassopmm `_y' `_x' [aw=weight], knn(5) add(5) psu(psu) seed(12388) uniqid(_numobs11)
-mi estimate: mean price if samples==1 [aw=weight]
+{p 6 10 1}.mi set wide{p_end}
 
+{p 6 10 1}.mi register imputed price {p_end}
+
+{p 6 10 1}.lassopmm `_y' `_x' [aw=weight], knn(5) add(5) psu(psu) seed(12388) uniqid(_numobs11){p_end}
+{p 6 10 1}.mi estimate: mean price if samples==1 [aw=weight]{p_end}
+
+{p 18 10 1}({stata lassopmm_ex ex1 :click to run}){p_end}
 
 {title:Authors:}
 

@@ -162,8 +162,8 @@ qui{
 			
 			
 			//mata: yhat1 = quadcross((((x:-mu):/sd) ,J(rows(x), 1,1))',b')
-			mata: yhat1 = quadcross((x ,J(rows(x), 1,1))',b')
 			//mata: yhat2 = quadcross((((x1:-mu):/sd),J(rows(x1),1,1))',b')
+			mata: yhat1 = quadcross((x ,J(rows(x), 1,1))',b')
 			mata: yhat2 = quadcross((x1,J(rows(x1),1,1))',b')
 	
 		if (`i'==1){
@@ -180,6 +180,8 @@ qui{
 				else               mata: y1 = y1 ,	_randomleo(y,yhat2)			
 			}
 		}
+	* restore, preserve // to add
+	
 	} //End of sim loop
 *===============================================================================
 // 3. Export simulations to mi set data

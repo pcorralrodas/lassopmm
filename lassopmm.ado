@@ -103,23 +103,37 @@ qui{
 // 3. Run lasso and imputation on different bootstrapped data
 *===============================================================================
 	//Get numsim vectors of Y	
-	forval i=1/`add'{
-		if (`i'!=1) use `mydata', clear
+	forval i=1/`add' {
+	
+	pause before use data
+	
+	if (`i'!=1) use `mydata', clear // to delete
+	
+	pause after use data
 			mata: st_view(myvar=., ., "`depvar' `_my_x' `wi'","`touse'")
-			mata: myvar[.,.] = myvar[ind[.,`i'],.]
-		if ("`noisily'"!="") noi:lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
-		else                 lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
+	
+	mata: myvar[.,.] = myvar[ind[.,`i'],.]
+	
+	pause after transforming data
+
+
+	`noisily' lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'],    /* 
+	   */	                    numlambda(`numlambda') numfolds(`numfolds') /* 
+		 */                     lambda(`lambda') epsilon(`epsilon')
+			
 		tempname _beta BB
 		tempvar touse1 touse2
 		
 		mat `_beta' = e(b)
 		
 		gen `touse1' = e(sample)
+		
 		gen `touse2'= `touse1'==0 & missing(`depvar')
+	
 	
 		local a=1
 		local chosen
-		foreach x of local _my_x{
+		foreach x of local _my_x {
 			if (`_beta'[1,`a']!=0){
 				local chosen `chosen' `x'
 				mat `BB' = nullmat(`BB'),`_beta'[1,`a']

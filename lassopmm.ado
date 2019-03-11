@@ -236,6 +236,95 @@ end
 // Annex: MATA functions
 *===============================================================================
 mata
+
+struct lpmminfo 
+{
+
+	// -------- Input variables
+
+	real matrix    b       // selected Betas from lasso (estimates)
+	
+	pointer (real matrix   ) scalar x    // covariates for Complete data based on selected betas
+	pointer (real colvector) scalar w    // weights of Complete data based on selected betas
+	pointer (real colvector) scalar y    // dependent var with COMPLETE data	
+	pointer (real matrix   ) scalar x1   // covariates for Incomplete data
+	pointer (real colvector) scalar w1   // weights for Incomplete data
+	
+	// input options
+	
+	real scalar sorty     // if sorty option selected
+	real scalar mlong     // if mlong form selected
+	real scalar knn       // No. of neighbors
+	real scalar sim       // No. of similations
+	
+	//-----------derived
+	real colvector yhat1   // predicted y for COMPLETE data
+	real colvector yhat2   // predicted y for INconplete data
+
+}
+
+void lpmminit(struct lpmminfo scalar r)
+{
+	r.sorty = .z
+	r.mlong = .z
+	r.knn   = strtoreal(st_local("knn"))
+  r.sim   = strtoreal(st_local("add"))
+	
+	real colvector y, w, w1 
+	real matrix    x, x1 
+	
+	y  = .z
+	x  = .z
+	x1 = .z
+	w  = .z
+	w1 = .z
+	
+}
+
+void lpmm_load(string scalar BB, 
+               string scalar chosen,
+							 string scalar touse1,
+							 string scalar touse2,
+							 string scalar depvar,
+							 string scalar wi)
+{
+ 
+	real matrix     b, x, x1 
+	real colvector  y, w, w1
+	
+	b = st_matrix(BB)
+	st_view(x =., ., chosen , touse1)
+	st_view(w =., ., wi     , touse1)
+	st_view(y =., ., depvar , touse1)
+	st_view(x1=., ., chosen , touse2)
+	st_view(w1=., ., wi     , touse2)
+
+}
+
+struct lpmminfo scalar lpmmset (real colvector y,
+                                real matrix    x, 
+																real matrix    x1, 
+																real colvector w, 
+																real colvector w1 )
+{
+	struct lpmminfo scalar r
+	
+	r.y  = &y
+	r.x  = &x
+	r.x1 = &x1
+	r.w  = &w 
+	r.w1 = &w1
+
+}
+
+
+
+
+
+
+
+
+
 	//Function will return an index selection vector for PMM Y
 	function _Mpmm(yh1, yh2, knn){
 		//Search distance to yh2

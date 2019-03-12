@@ -88,7 +88,7 @@ qui{
 	}
 	
 *===============================================================================
-// 2. Get bootstrap permutation vectors
+// 2. Get bootstrap permutation vectors and load data
 *===============================================================================
 	set seed `seed'	
 	mata: st_view(mypsu=.,.,"`_group'", "`touse'")
@@ -97,30 +97,21 @@ qui{
 	tempfile mydata
 	save `mydata'
 	
-	
+	mata: r = lpmm_emptyvectors() // create empty vector
 	
 *===============================================================================
 // 3. Run lasso and imputation on different bootstrapped data
 *===============================================================================
 	//Get numsim vectors of Y	
 	forval i=1/`add' {
-	
-	pause before use data
-	
-	if (`i'!=1) use `mydata', clear // to delete
-	
-	pause after use data
-			mata: st_view(myvar=., ., "`depvar' `_my_x' `wi'","`touse'")
-	
-	mata: myvar[.,.] = myvar[ind[.,`i'],.]
-	
-	pause after transforming data
+		
+		mata: lpmm_iteration(r, "`touse'", "`_group'", "`depvar' `_my_x' `wi'", `i')
+		
 
-
-	`noisily' lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'],    /* 
-	   */	                    numlambda(`numlambda') numfolds(`numfolds') /* 
-		 */                     lambda(`lambda') epsilon(`epsilon')
-			
+		`noisily' lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'],    /* 
+			 */	                    numlambda(`numlambda') numfolds(`numfolds') /* 
+			 */                     lambda(`lambda') epsilon(`epsilon')
+				
 		tempname _beta BB
 		tempvar touse1 touse2
 		
@@ -129,8 +120,8 @@ qui{
 		gen `touse1' = e(sample)
 		
 		gen `touse2'= `touse1'==0 & missing(`depvar')
-	
-	
+		
+		
 		local a=1
 		local chosen
 		foreach x of local _my_x {
@@ -145,30 +136,12 @@ qui{
 		foreach x of local chosen{
 			replace `touse2' = 0 if missing(`x')
 		}
-		
-			mata: b = st_matrix("`BB'")
-			mata: st_view(x=., .,"`chosen'", "`touse1'")
-			mata: st_view(w=., .,"`wi'", "`touse1'")
-			/* Coefficients are "denormalized, not necessary"
-			mata: sd = quadmeanvariance(x,w)
-			mata: mu = sd[1,.]
-			mata: sd = sqrt(diagonal(sd[|2,1\.,.|]))'
-			*/
-			mata: st_view(y=., .,"`depvar'", "`touse1'")
-
-			
-			mata: st_view(x1=.,.,"`chosen'", "`touse2'")
-			mata: st_view(w1=., .,"`wi'", "`touse2'")
 			
 			
-			//mata: yhat1 = quadcross((((x:-mu):/sd) ,J(rows(x), 1,1))',b')
-			//mata: yhat2 = quadcross((((x1:-mu):/sd),J(rows(x1),1,1))',b')
-			mata: yhat1 = quadcross((x ,J(rows(x), 1,1))',b')
-			mata: yhat2 = quadcross((x1,J(rows(x1),1,1))',b')
-		
-		mata: lpmm_execute(r)
-		
-	* restore, preserve // to add
+		mata: lpmm_load(r)	
+		mata: y1 = lpmm_execute(r)
+			
+		* restore, preserve // to add
 	
 	} //End of sim loop
 *===============================================================================
@@ -237,7 +210,7 @@ struct lpmminfo
 	pointer (real colvector) scalar y      // dependent var with COMPLETE data	
 	pointer (real matrix   ) scalar x1     // covariates for Incomplete data
 	pointer (real colvector) scalar w1     // weights for Incomplete data
-	pointer (real colvector) scalar mypsu  // psu variable
+	pointer (real colvector) scalar psu    // psu variable
 	
 	// input options
 	
@@ -263,30 +236,44 @@ struct lpmminfo
 	
 }
 
-void lpmm_emptyvectors()
+struct lpmminfo scalar lpmm_emptyvectors()
 {
-	real colvector y, w, w1, psu
-	real matrix    x, x1 
 	
-	x   = J(0,0, .z)
-	x1  = J(0,0, .z)
-	y1  = J(0,0, .z)
-	y   = J(0,1, .z)
-	w   = J(0,1, .z)
-	w1  = J(0,1, .z)
-	psu = J(0,1, .z)
+	struct lpmminfo scalar r
+	r.x   = J(0,0, .z)
+	r.x1  = J(0,0, .z)
+	r.y1  = J(0,0, .z)
+	r.y   = J(0,1, .z)
+	r.w   = J(0,1, .z)
+	r.w1  = J(0,1, .z)
+	r.psu = J(0,1, .z)
+	
+	return(r)
 
 }
 
+void lpmm_iteration(struct lpmminfo scalar r,
+                    string scalar touse,
+									  string scalar group,
+									  string scalar YXw,
+									  real scalar i)
+{
+	
+	real matrix myvar
+	
+	if (rows(r.psu) == 0) st_view(r.psu=., ., group, touse)
+	st_view(myvar=., .,YXw, touse)
+	myvar[.,.] = myvar[ind[.,i],.]
+
+}
 
 void lpmm_load(string scalar BB, 
                string scalar chosen,
-							 string scalar touse,
+							 
 							 string scalar touse1,
 							 string scalar touse2,
 							 string scalar depvar,
-							 string scalar wi, 
-							 string scalar psu)
+							 string scalar wi)
 {
  
 	real matrix     b, x, x1 
@@ -298,11 +285,10 @@ void lpmm_load(string scalar BB,
 	st_view(y    =., ., depvar , touse1)
 	st_view(x1   =., ., chosen , touse2)
 	st_view(w1   =., ., wi     , touse2)
-	if (rows(psu) == 0) st_view(mypsu=., ., psu,     touse)
 
 }
 
-struct lpmminfo scalar lpmmset (real colvector y,
+struct lpmminfo scalar lpmmset(real colvector y,
                                 real matrix    x, 
 																real matrix    x1, 
 																real colvector w, 
@@ -316,7 +302,7 @@ struct lpmminfo scalar lpmmset (real colvector y,
 	r.x1   = &x1
 	r.w    = &w 
 	r.w1   = &w1
-	r.pasu = &psu
+	r.psu = &psu
 	
 	if (st_local("sorty") != "") r.sorty = 1
 	else                         r.sorty = 0
@@ -328,6 +314,7 @@ struct lpmminfo scalar lpmmset (real colvector y,
   r.sim   = strtoreal(st_local("add"))
 	
 	r.ry1 = r.ry2 = .z
+	return(r)
 }
 
 
@@ -358,7 +345,7 @@ real colvector lpmm_execute(struct lpmminfo scalar r)
 	
 	}
 	
-	return(r.y1)
+	return(r.y1) // this could be eliminated if we call r.y1 instead of y1. 
 	
 }
 

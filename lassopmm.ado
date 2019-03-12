@@ -244,11 +244,12 @@ struct lpmminfo
 
 	real matrix    b       // selected Betas from lasso (estimates)
 	
-	pointer (real matrix   ) scalar x    // covariates for Complete data based on selected betas
-	pointer (real colvector) scalar w    // weights of Complete data based on selected betas
-	pointer (real colvector) scalar y    // dependent var with COMPLETE data	
-	pointer (real matrix   ) scalar x1   // covariates for Incomplete data
-	pointer (real colvector) scalar w1   // weights for Incomplete data
+	pointer (real matrix   ) scalar x      // covariates for Complete data based on selected betas
+	pointer (real colvector) scalar w      // weights of Complete data based on selected betas
+	pointer (real colvector) scalar y      // dependent var with COMPLETE data	
+	pointer (real matrix   ) scalar x1     // covariates for Incomplete data
+	pointer (real colvector) scalar w1     // weights for Incomplete data
+	pointer (real colvector) scalar mypsu  // psu variable
 	
 	// input options
 	
@@ -256,48 +257,56 @@ struct lpmminfo
 	real scalar mlong     // if mlong form selected
 	real scalar knn       // No. of neighbors
 	real scalar sim       // No. of similations
+	real scalar ry2       // rows of yh2
+	real scalar ry1       // rows of yh1
 	
 	//-----------derived
-	real colvector yhat1   // predicted y for COMPLETE data
-	real colvector yhat2   // predicted y for INconplete data
-
+	real colvector yh1     // predicted y for COMPLETE data
+	real colvector yh2     // predicted y for INconplete data
+	real matrix    ind     // indicator of bootstrapingb
+	real colvector myy     // order of Knn in Y
+  real matrix    info    // panelsetup of psu
+  real colvector index   // index of psu 
+  real colvector indexm  // Subset index of psu 
+  real scalar    dim     // dimension (rows) of indexm
+	
 }
 
-void lpmminit(struct lpmminfo scalar r)
+void lpmm_emptyvectors()
 {
-	r.sorty = .z
-	r.mlong = .z
-	r.knn   = strtoreal(st_local("knn"))
-  r.sim   = strtoreal(st_local("add"))
-	
-	real colvector y, w, w1 
+	real colvector y, w, w1, psu
 	real matrix    x, x1 
 	
-	y  = .z
-	x  = .z
-	x1 = .z
-	w  = .z
-	w1 = .z
-	
+	y   = J(0,1, .z)
+	x   = J(0,0, .z)
+	x1  = J(0,0, .z)
+	w   = J(0,1, .z)
+	w1  = J(0,1, .z)
+	psu = J(0,1, .z)
+
 }
+
 
 void lpmm_load(string scalar BB, 
                string scalar chosen,
+							 string scalar touse,
 							 string scalar touse1,
 							 string scalar touse2,
 							 string scalar depvar,
-							 string scalar wi)
+							 string scalar wi, 
+							 string scalar psu)
 {
  
 	real matrix     b, x, x1 
-	real colvector  y, w, w1
+	real colvector  y, w, w1, mypsu
 	
 	b = st_matrix(BB)
-	st_view(x =., ., chosen , touse1)
-	st_view(w =., ., wi     , touse1)
-	st_view(y =., ., depvar , touse1)
-	st_view(x1=., ., chosen , touse2)
-	st_view(w1=., ., wi     , touse2)
+	st_view(x    =., ., chosen , touse1)
+	st_view(w    =., ., wi     , touse1)
+	st_view(y    =., ., depvar , touse1)
+	st_view(x1   =., ., chosen , touse2)
+	st_view(w1   =., ., wi     , touse2)
+	if (rows(psu) == 0) st_view(mypsu=., ., psu,     touse)
 
 }
 
@@ -305,28 +314,150 @@ struct lpmminfo scalar lpmmset (real colvector y,
                                 real matrix    x, 
 																real matrix    x1, 
 																real colvector w, 
-																real colvector w1 )
+																real colvector w1, 
+																real colvector psu)
 {
 	struct lpmminfo scalar r
 	
-	r.y  = &y
-	r.x  = &x
-	r.x1 = &x1
-	r.w  = &w 
-	r.w1 = &w1
-
+	r.y    = &y
+	r.x    = &x
+	r.x1   = &x1
+	r.w    = &w 
+	r.w1   = &w1
+	r.pasu = &psu
+	
+	if (st_local("sorty") != "") r.sorty = 1
+	else                         r.sorty = 0
+	
+	if (st_local("mlong") != "") r.mlong = 1
+	else                         r.mlong = 0
+	
+	r.knn   = strtoreal(st_local("knn"))
+  r.sim   = strtoreal(st_local("add"))
+	
+	r.ry1 = r.ry2 = .z
 }
 
+// real scalar lpmm_ (struct lpmminfo scalar r) return()
+// real scalar lpmm_ (struct lpmminfo scalar r) return()
+// real scalar lpmm_ (struct lpmminfo scalar r) return()
 
+// real colvector lpmm_yhat1( struct lpmminfo scalar r)
+// {
+// 	    r.yh1 = quadcross((*r.x ,J(rows(*r.x), 1,1))',r.b')
+// 			return(r.yh1)
+// }
+// real colvector lpmm_yhat1( struct lpmminfo scalar r)
+// {
+// 	    r.yh2 = quadcross((*r.x1,J(rows(*r.x1),1,1))', r.b')
+// 			return(r.yh2)
+// }
 
-
-
-
-
-
+real colvector lpmm_yhat( struct lpmminfo scalar r )
+{
+ 	    r.yh1 = quadcross((*r.x ,J(rows(*r.x), 1,1))',r.b')
+	    r.yh2 = quadcross((*r.x1,J(rows(*r.x1),1,1))', r.b')
+			return(r)
+}
 
 	//Function will return an index selection vector for PMM Y
-	function _Mpmm(yh1, yh2, knn){
+real colvector lpmm_execute(struct lpmminfo scalar r) 
+{
+	if (r.sorty == 1) lpmm_randomleo(r)
+	else              lpmm_Mpmm(r)
+}
+
+	
+real colvector lpmm_Mpmm (struct lpmminfo scalar r) {
+		//Search distance to yh2
+		
+		real colvector mynn
+		
+		r.ry2 = rows(r.yh2)
+		r.ry1 = rows(r.yh1)  // what is this for?
+		
+		if (r.knn>1){
+			for(i=1; i<=ry2; i++) {
+				r.myy = order(abs(r.yh1:-r.yh2[i]),1)[|1\r.knn|]				
+				if (i==1) mynn =        lpmm_sampleepsi(r, 1)
+				else      mynn = mynn \ lpmm_sampleepsi(r, 1)		
+			}
+		}
+		else{
+			for(i=1; i<=ry2; i++){
+				if (i==1) mynn =        order(abs(r.yh1:-r.yh2[i]),1)[1]	
+				else      mynn = mynn \ order(abs(r.yh1:-r.yh2[i]),1)[1]	
+			}	
+		}
+		return(*r.y[mynn])
+	}
+
+//Function, selects a random set of observed y, of length rows unobserved. 
+// sorts the set and assigns the value to the sorted xb from unobserved
+real colvector lpmm_randomleo(struct lpmminfo scalar r) {
+	
+	real matrix tosort
+	
+	r.dim  = rows(r.yh2)
+	//random sample of y
+	tosort      = sort((runningsum(J(r.dim,1,1)),r.yh2),2)
+	tosort[.,2] = sort(lpmm_sampleepsi(r, 1),1)
+	_sort(tosort,1)
+	
+	return(tosort[.,2])
+}	
+
+//n is the number of simulations, dim is the number of rows of the output, epsi is the source
+real matrix lpmm_sampleepsi( struct lpmminfo scalar r, 
+														 | transmorphic f) {
+
+	real scalar n 
+	real matrix sige2, eps
+	
+	if (args() == 1) { // for lpmm_getmyboot
+		n   = r.sim
+		eps = r.myy
+	}
+	else {     // for lpmm_randomleo() and lpmm_Mpmm()
+	  n   = f
+		eps = *r.y
+	}
+	
+	sige2 = J(r.dim,n,0)
+	N = rows(eps)
+	if (cols(eps)==1) for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(N*runiform(dim,1)),1]
+	else              for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(N*runiform(dim,1)),i]
+	return(sige2)	
+}
+
+//Function for bootstrap permutation vectors
+real matrix lpmm_getmyboot(struct lpmminfo scalar r) {
+		
+	
+	real scalar rr
+	
+	r.info  = panelsetup(*r.psu,1)
+	r.index = runningsum(J(rows(*r.psu),1,1))
+	
+	rr = rows(info)
+	
+	for(i=1; i<=rr; i++){
+		m = info[i,1],1 \ info[i,2],1
+		r.indexm = r.index[|m|]
+		r.dim = rows(r.indexm)
+		if (i==1) r.ind =         lpmm_sampleepsi(r)
+		else      r.ind = r.ind \ lpmm_sampleepsi(r)
+	}
+	
+	return(r.ind)
+}	
+
+
+
+
+//-----------------------------------------------------
+	
+	function _Mpmm(yh1, yh2, knn){  // to delete
 		//Search distance to yh2
 		ry2 = rows(yh2)
 		ry1 = rows(yh1)
@@ -345,6 +476,8 @@ struct lpmminfo scalar lpmmset (real colvector y,
 		}
 		return(mynn)
 	}	
+	
+	
 	//Function, selects a random set of observed y, of length rows unobserved. 
 	// sorts the set and assigns the value to the sorted xb from unobserved
 	function _randomleo(yo, yh2){
@@ -356,8 +489,12 @@ struct lpmminfo scalar lpmmset (real colvector y,
 		
 		return(tosort[.,2])
 	}	
+	
+	
 	//n is the number of simulations, dim is the number of rows of the output, epsi is the source
-	function _f_sampleepsi(real scalar n, real scalar dim, real matrix eps){				  
+	function _f_sampleepsi(real scalar n, 
+	                       real scalar dim, 
+												 real matrix eps) {				  
 		sige2 = J(dim,n,0)
 		N = rows(eps)
 		if (cols(eps)==1) for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(N*runiform(dim,1)),1]

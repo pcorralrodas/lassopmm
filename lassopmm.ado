@@ -165,21 +165,9 @@ qui{
 			//mata: yhat2 = quadcross((((x1:-mu):/sd),J(rows(x1),1,1))',b')
 			mata: yhat1 = quadcross((x ,J(rows(x), 1,1))',b')
 			mata: yhat2 = quadcross((x1,J(rows(x1),1,1))',b')
-	
-		if (`i'==1){
-			if ("`sorty'"=="") mata: y1 = y[_Mpmm(yhat1, yhat2, `knn')]
-			else               mata: y1 = _randomleo(y,yhat2)
-		}
-		else{
-			if ("`mlong'"=="mlong"){
-				if ("`sorty'"=="") mata: y1 = y1 \	y[_Mpmm(yhat1, yhat2, `knn')]
-				else               mata: y1 = y1 \	_randomleo(y,yhat2)
-			}	
-			else{	
-				if ("`sorty'"=="") mata: y1 = y1 ,	y[_Mpmm(yhat1, yhat2, `knn')]
-				else               mata: y1 = y1 ,	_randomleo(y,yhat2)			
-			}
-		}
+		
+		mata: lpmm_execute(r)
+		
 	* restore, preserve // to add
 	
 	} //End of sim loop
@@ -270,6 +258,9 @@ struct lpmminfo
   real colvector indexm  // Subset index of psu 
   real scalar    dim     // dimension (rows) of indexm
 	
+	//------- Output
+	real matrix    y1      // output matrix
+	
 }
 
 void lpmm_emptyvectors()
@@ -277,9 +268,10 @@ void lpmm_emptyvectors()
 	real colvector y, w, w1, psu
 	real matrix    x, x1 
 	
-	y   = J(0,1, .z)
 	x   = J(0,0, .z)
 	x1  = J(0,0, .z)
+	y1  = J(0,0, .z)
+	y   = J(0,1, .z)
 	w   = J(0,1, .z)
 	w1  = J(0,1, .z)
 	psu = J(0,1, .z)
@@ -338,59 +330,62 @@ struct lpmminfo scalar lpmmset (real colvector y,
 	r.ry1 = r.ry2 = .z
 }
 
-// real scalar lpmm_ (struct lpmminfo scalar r) return()
-// real scalar lpmm_ (struct lpmminfo scalar r) return()
-// real scalar lpmm_ (struct lpmminfo scalar r) return()
 
-// real colvector lpmm_yhat1( struct lpmminfo scalar r)
-// {
-// 	    r.yh1 = quadcross((*r.x ,J(rows(*r.x), 1,1))',r.b')
-// 			return(r.yh1)
-// }
-// real colvector lpmm_yhat1( struct lpmminfo scalar r)
-// {
-// 	    r.yh2 = quadcross((*r.x1,J(rows(*r.x1),1,1))', r.b')
-// 			return(r.yh2)
-// }
-
-real colvector lpmm_yhat( struct lpmminfo scalar r )
+void lpmm_yhat( struct lpmminfo scalar r )
 {
  	    r.yh1 = quadcross((*r.x ,J(rows(*r.x), 1,1))',r.b')
 	    r.yh2 = quadcross((*r.x1,J(rows(*r.x1),1,1))', r.b')
-			return(r)
 }
 
 	//Function will return an index selection vector for PMM Y
 real colvector lpmm_execute(struct lpmminfo scalar r) 
 {
-	if (r.sorty == 1) lpmm_randomleo(r)
-	else              lpmm_Mpmm(r)
+	real colvector ytemp
+	
+	if (r.sorty == 1) ytemp = lpmm_randomleo(r)
+	else              ytemp = lpmm_Mpmm(r)
+
+	if (rows(r.y1) == 0) {
+		r.y1 = ytemp
+	}
+	else {
+		if (r.mlong == 1 ) {
+			r.y1 = r.y1 \ ytemp
+		}
+		else {
+			r.y1 = r.y1 , ytemp
+		}
+	
+	}
+	
+	return(r.y1)
+	
 }
 
 	
 real colvector lpmm_Mpmm (struct lpmminfo scalar r) {
-		//Search distance to yh2
-		
-		real colvector mynn
-		
-		r.ry2 = rows(r.yh2)
-		r.ry1 = rows(r.yh1)  // what is this for?
-		
-		if (r.knn>1){
-			for(i=1; i<=ry2; i++) {
-				r.myy = order(abs(r.yh1:-r.yh2[i]),1)[|1\r.knn|]				
-				if (i==1) mynn =        lpmm_sampleepsi(r, 1)
-				else      mynn = mynn \ lpmm_sampleepsi(r, 1)		
-			}
+	//Search distance to yh2
+	
+	real colvector mynn
+	
+	r.ry2 = rows(r.yh2)
+	r.ry1 = rows(r.yh1)  // what is this for?
+	
+	if (r.knn>1){
+		for(i=1; i<=ry2; i++) {
+			r.myy = order(abs(r.yh1:-r.yh2[i]),1)[|1\r.knn|]				
+			if (i==1) mynn =        lpmm_sampleepsi(r, 1)
+			else      mynn = mynn \ lpmm_sampleepsi(r, 1)		
 		}
-		else{
-			for(i=1; i<=ry2; i++){
-				if (i==1) mynn =        order(abs(r.yh1:-r.yh2[i]),1)[1]	
-				else      mynn = mynn \ order(abs(r.yh1:-r.yh2[i]),1)[1]	
-			}	
-		}
-		return(*r.y[mynn])
 	}
+	else{
+		for(i=1; i<=ry2; i++){
+			if (i==1) mynn =        order(abs(r.yh1:-r.yh2[i]),1)[1]	
+			else      mynn = mynn \ order(abs(r.yh1:-r.yh2[i]),1)[1]	
+		}	
+	}
+	return(*r.y[mynn])
+}
 
 //Function, selects a random set of observed y, of length rows unobserved. 
 // sorts the set and assigns the value to the sorted xb from unobserved
@@ -407,7 +402,7 @@ real colvector lpmm_randomleo(struct lpmminfo scalar r) {
 	return(tosort[.,2])
 }	
 
-//n is the number of simulations, dim is the number of rows of the output, epsi is the source
+
 real matrix lpmm_sampleepsi( struct lpmminfo scalar r, 
 														 | transmorphic f) {
 

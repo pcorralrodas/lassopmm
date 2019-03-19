@@ -27,6 +27,7 @@ end
 
 
 program ex1
+if ("`1'" == "trace") local trace "set trace on"
 Msg preserve
 
 sysuse auto, clear
@@ -61,6 +62,7 @@ mi set wide
 
 mi register imputed price 
 
+`trace'
 lassopmm `_y' `_x' [aw=weight], knn(5) add(5) psu(psu) seed(12388) uniqid(_numobs11)
 mi estimate: mean price if samples==1 [aw=weight]
 

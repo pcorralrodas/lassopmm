@@ -7,7 +7,8 @@
 
 cap program drop lassopmm
 program define lassopmm, eclass byable(recall)
-	version 11, missing
+	version 14
+
 #delimit;
 	syntax varlist(min=2 numeric fv) [if] [in] [aw],
 		uniqid(varlist)
@@ -24,6 +25,7 @@ program define lassopmm, eclass byable(recall)
 		EPSIlon(real 0.001)
 	];
 #delimit cr
+
 set more off
 
 qui{
@@ -90,24 +92,27 @@ qui{
 *===============================================================================
 // 2. Get bootstrap permutation vectors and load data
 *===============================================================================
-	set seed `seed'	
-	mata: st_view(mypsu=.,.,"`_group'", "`touse'")
-	noi: mata: ind = _getmyboot(mypsu,`add')	
+	// set seed `seed'	
+	// mata: st_view(mypsu=.,.,"`_group'", "`touse'")
+	// noi: mata: ind = _getmyboot(mypsu,`add')	
 	
 	tempfile mydata
 	save `mydata'
+	preserve 
 	
-	mata: r = lpmm_emptyvectors() // create empty vector
+	noi mata: r = lpmmset()         ;  /* 
+         */ r = lpmm_getmyboot(r, "`_group'", "`touse'")
+	
+	
 	
 *===============================================================================
 // 3. Run lasso and imputation on different bootstrapped data
 *===============================================================================
 	//Get numsim vectors of Y	
-	forval i=1/`add' {
+	forval i=1/`add' {		
 		
-		mata: lpmm_iteration(r, "`touse'", "`_group'", "`depvar' `_my_x' `wi'", `i')
+		noi mata: lpmm_iteration(r, "`touse'", "`depvar' `_my_x' `wi'", `i')
 		
-
 		`noisily' lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'],    /* 
 			 */	                    numlambda(`numlambda') numfolds(`numfolds') /* 
 			 */                     lambda(`lambda') epsilon(`epsilon')
@@ -118,7 +123,6 @@ qui{
 		mat `_beta' = e(b)
 		
 		gen `touse1' = e(sample)
-		
 		gen `touse2'= `touse1'==0 & missing(`depvar')
 		
 		
@@ -138,57 +142,59 @@ qui{
 		}
 			
 			
-		mata: lpmm_load(r)	
+		mata: lpmm_load(r, "`BB'", "`chosen'", "`touse1'", "`touse2'", "`depvar'", "`wi'")
+		mata: lpmm_yhat(r)
 		mata: y1 = lpmm_execute(r)
 			
-		* restore, preserve // to add
+		restore, preserve 
 	
 	} //End of sim loop
+	
+
 *===============================================================================
 // 3. Export simulations to mi set data
 *===============================================================================
+
+	restore 
 	if ("`mlong'"=="mlong"){
-		use `mydata', clear
-			tempvar touse2 nn
-			gen `touse2' = `touse'==0 & missing(`depvar')
-			qui:count 
-			local hu0 = r(N)
-				preserve
-					qui:keep if `touse2'==1
-					tempfile _nnio
-					qui:save `_nnio'
-					qui:count
-					local hu=r(N)
-				restore
-			local a=1
-			while (`a'<=`add'){
-				qui:append using `_nnio', gen(`nn')
-				qui:replace _mi_m=`a' if `nn'==1
-				local ++a
-				drop `nn'			
-			}
-			qui: char _dta[_mi_M] `add'
-			qui: char _dta[_mi_n] `hu'
-			qui: char _dta[_mi_N] `hu0'		
-			replace `touse2'=`touse2'==1 & _mi_m>0
-			mata: st_store(.,st_varindex(tokens("`depvar'")),"`touse2'",y1)				
+		tempvar touse2 nn
+		gen `touse2' = `touse'==0 & missing(`depvar')
+		qui:count 
+		local hu0 = r(N)
+			preserve
+				qui:keep if `touse2'==1
+				tempfile _nnio
+				qui:save `_nnio'
+				qui:count
+				local hu=r(N)
+			restore
+		local a=1
+		while (`a'<=`add'){
+			qui:append using `_nnio', gen(`nn')
+			qui:replace _mi_m=`a' if `nn'==1
+			local ++a
+			drop `nn'			
+		}
+		qui: char _dta[_mi_M] `add'
+		qui: char _dta[_mi_n] `hu'
+		qui: char _dta[_mi_N] `hu0'		
+		replace `touse2'=`touse2'==1 & _mi_m>0
+		mata: st_store(.,st_varindex(tokens("`depvar'")),"`touse2'",y1)				
 	}
 	else{
-		use `mydata', clear
-			tempvar touse2 nn
-			gen `touse2' = `touse'==0 & missing(`depvar')
-			replace _mi_miss = 1 if `touse2'==1
-			local a=1
-			local toimp
-			while (`a'<=`add'){
-				gen double _`a'_`depvar' = `depvar' if `touse'==1
-				
-				local toimp `toimp' _`a'_`depvar'
-				local ++a				
-			}
-			qui: char _dta[_mi_M] `add'
-			mata: st_store(.,st_varindex(tokens("`toimp'")),"`touse2'",y1)				
-
+		tempvar touse2 nn
+		gen `touse2' = `touse'==0 & missing(`depvar')
+		replace _mi_miss = 1 if `touse2'==1
+		local a=1
+		local toimp
+		while (`a'<=`add'){
+			gen double _`a'_`depvar' = `depvar' if `touse'==1
+			
+			local toimp `toimp' _`a'_`depvar'
+			local ++a				
+		}
+		qui: char _dta[_mi_M] `add'
+		mata: st_store(.,st_varindex(tokens("`toimp'")),"`touse2'",y1)				
 	}	
 }
 end
@@ -196,21 +202,23 @@ end
 *===============================================================================
 // Annex: MATA functions
 *===============================================================================
-mata
+set matastrict on
+cap mata drop lpmm*()
 
-struct lpmminfo 
-{
+mata:
+
+struct lpmminfo  {
 
 	// -------- Input variables
 
-	real matrix    b       // selected Betas from lasso (estimates)
-	
-	pointer (real matrix   ) scalar x      // covariates for Complete data based on selected betas
-	pointer (real colvector) scalar w      // weights of Complete data based on selected betas
-	pointer (real colvector) scalar y      // dependent var with COMPLETE data	
-	pointer (real matrix   ) scalar x1     // covariates for Incomplete data
-	pointer (real colvector) scalar w1     // weights for Incomplete data
-	pointer (real colvector) scalar psu    // psu variable
+	real matrix     x      // covariates for Complete data based on selected betas
+	real colvector  w      // weights of Complete data based on selected betas
+	real colvector  y      // dependent var with COMPLETE data	
+	real matrix     x1     // covariates for Incomplete data
+	real colvector  w1     // weights for Incomplete data
+	real matrix     b      // selected Betas from lasso (estimates)
+
+	real colvector                  psu    // psu variable
 	
 	// input options
 	
@@ -218,8 +226,6 @@ struct lpmminfo
 	real scalar mlong     // if mlong form selected
 	real scalar knn       // No. of neighbors
 	real scalar sim       // No. of similations
-	real scalar ry2       // rows of yh2
-	real scalar ry1       // rows of yh1
 	
 	//-----------derived
 	real colvector yh1     // predicted y for COMPLETE data
@@ -236,97 +242,136 @@ struct lpmminfo
 	
 }
 
-struct lpmminfo scalar lpmm_emptyvectors()
-{
-	
-	struct lpmminfo scalar r
-	r.x   = J(0,0, .z)
-	r.x1  = J(0,0, .z)
-	r.y1  = J(0,0, .z)
-	r.y   = J(0,1, .z)
-	r.w   = J(0,1, .z)
-	r.w1  = J(0,1, .z)
-	r.psu = J(0,1, .z)
-	
-	return(r)
 
-}
-
-void lpmm_iteration(struct lpmminfo scalar r,
-                    string scalar touse,
-									  string scalar group,
-									  string scalar YXw,
-									  real scalar i)
-{
-	
-	real matrix myvar
-	
-	if (rows(r.psu) == 0) st_view(r.psu=., ., group, touse)
-	st_view(myvar=., .,YXw, touse)
-	myvar[.,.] = myvar[ind[.,i],.]
-
-}
-
-void lpmm_load(string scalar BB, 
-               string scalar chosen,
-							 
-							 string scalar touse1,
-							 string scalar touse2,
-							 string scalar depvar,
-							 string scalar wi)
-{
- 
-	real matrix     b, x, x1 
-	real colvector  y, w, w1, mypsu
-	
-	b = st_matrix(BB)
-	st_view(x    =., ., chosen , touse1)
-	st_view(w    =., ., wi     , touse1)
-	st_view(y    =., ., depvar , touse1)
-	st_view(x1   =., ., chosen , touse2)
-	st_view(w1   =., ., wi     , touse2)
-
-}
-
-struct lpmminfo scalar lpmmset(real colvector y,
-                                real matrix    x, 
-																real matrix    x1, 
-																real colvector w, 
-																real colvector w1, 
-																real colvector psu)
-{
+struct lpmminfo scalar lpmmset() {
 	struct lpmminfo scalar r
 	
-	r.y    = &y
-	r.x    = &x
-	r.x1   = &x1
-	r.w    = &w 
-	r.w1   = &w1
-	r.psu = &psu
+	 r.x   = J(0,0, .z)
+	 r.x1  = J(0,0, .z)
+	 r.y1  = J(0,0, .z)
+	 r.b   = J(0,0, .z)
+	 r.y   = J(0,1, .z)
+	 r.w   = J(0,1, .z)
+	 r.w1  = J(0,1, .z)
 	
 	if (st_local("sorty") != "") r.sorty = 1
 	else                         r.sorty = 0
 	
-	if (st_local("mlong") != "") r.mlong = 1
-	else                         r.mlong = 0
+	if (st_local("mlong") == "mlong") r.mlong = 1
+	else                              r.mlong = 0
 	
 	r.knn   = strtoreal(st_local("knn"))
   r.sim   = strtoreal(st_local("add"))
 	
-	r.ry1 = r.ry2 = .z
 	return(r)
 }
 
 
-void lpmm_yhat( struct lpmminfo scalar r )
-{
- 	    r.yh1 = quadcross((*r.x ,J(rows(*r.x), 1,1))',r.b')
-	    r.yh2 = quadcross((*r.x1,J(rows(*r.x1),1,1))', r.b')
+
+void lpmm_iteration(struct lpmminfo scalar r,
+                    string scalar touse,
+									  string scalar YXw,
+									  real   scalar i) {
+	
+	real matrix myvar
+	
+	st_view(myvar=., .,YXw, touse)
+	myvar[.,.] = myvar[r.ind[.,i],.]
+	 
 }
 
-	//Function will return an index selection vector for PMM Y
-real colvector lpmm_execute(struct lpmminfo scalar r) 
-{
+
+void lpmm_load(struct lpmminfo scalar r,
+               string scalar BB, 
+               string scalar chosen,
+							 string scalar touse1,
+							 string scalar touse2,
+							 string scalar depvar,
+							 string scalar wi) {
+ 
+	
+	r.b = st_matrix(BB)
+	st_view(r.x   =., ., chosen , touse1)
+	st_view(r.w   =., ., wi     , touse1)
+	st_view(r.y   =., ., depvar , touse1)
+	st_view(r.x1  =., ., chosen , touse2)
+	st_view(r.w1  =., ., wi     , touse2)
+
+}
+
+
+//Function for bootstrap permutation vectors
+struct lpmminfo scalar lpmm_getmyboot(struct lpmminfo scalar r, 
+                    string scalar group,
+										string scalar touse) {
+		
+	st_view(r.psu=., ., group, touse)
+	real scalar rr
+
+	r.info  = panelsetup(r.psu,1)
+	r.index = runningsum(J(rows(r.psu),1,1))
+	
+	rr = rows(r.info)
+	
+	for(i=1; i<=rr; i++){
+		m = r.info[i,1],1 \ r.info[i,2],1
+		r.indexm = r.index[|m|]
+		r.dim = rows(r.indexm)
+		if (i==1) r.ind =         lpmm_sampleepsi(r)
+		else      r.ind = r.ind \ lpmm_sampleepsi(r)
+	}
+	
+	return(r)
+}	
+
+real matrix lpmm_sampleepsi( struct lpmminfo scalar r, 
+														 | transmorphic f) {
+	
+	real scalar n, N
+	real matrix sige2
+	pointer(real matrix) scalar eps
+	
+	if (args() == 1) { // for lpmm_getmyboot
+		n   = r.sim
+		eps = &r.indexm
+	}
+	else {     // for lpmm_randomleo() and lpmm_Mpmm()
+	  n   = f
+		eps = &r.myy
+	}
+	
+	
+	sige2 = J(r.dim,n,0)
+	
+	N = rows(*eps)
+	
+	if (cols(*eps)==1)  {
+		for(i=1; i<=n; i++) {	
+			sige2[.,i] = (*eps)[ceil(N*runiform(r.dim,1)),1]
+		}
+	}
+	
+	else  {
+		for(i=1; i<=n; i++) {
+			sige2[.,i] = (*eps)[ceil(N*runiform(r.dim,1)),i]
+		}
+	}
+
+	return(sige2)
+		
+}
+
+void lpmm_yhat( struct lpmminfo scalar r ) {
+					
+ 	    r.yh1 = quadcross((r.x  , J(rows(r.x) , 1,1))', r.b')
+	    r.yh2 = quadcross((r.x1 , J(rows(r.x1), 1,1))', r.b')
+}
+
+//Function will return an index selection vector for PMM Y
+
+ 
+real matrix lpmm_execute(struct lpmminfo scalar r)  {
+	
 	real colvector ytemp
 	
 	if (r.sorty == 1) ytemp = lpmm_randomleo(r)
@@ -349,29 +394,34 @@ real colvector lpmm_execute(struct lpmminfo scalar r)
 	
 }
 
-	
 real colvector lpmm_Mpmm (struct lpmminfo scalar r) {
 	//Search distance to yh2
 	
 	real colvector mynn
+	real scalar ry1, ry2
 	
-	r.ry2 = rows(r.yh2)
-	r.ry1 = rows(r.yh1)  // what is this for?
+	ry2 = rows(r.yh2)
+	ry1 = rows(r.yh1)  // what is this for?
 	
-	if (r.knn>1){
+	r.dim = 1
+	
+	if (r.knn > 1){
 		for(i=1; i<=ry2; i++) {
-			r.myy = order(abs(r.yh1:-r.yh2[i]),1)[|1\r.knn|]				
-			if (i==1) mynn =        lpmm_sampleepsi(r, 1)
-			else      mynn = mynn \ lpmm_sampleepsi(r, 1)		
+			
+			 r.myy = order(abs(r.yh1 :- r.yh2[i]),1)[|1\r.knn|]				
+			 
+			 if (i==1) mynn =        lpmm_sampleepsi(r, 1)
+			 else      mynn = mynn \ lpmm_sampleepsi(r, 1) 
+			
 		}
 	}
-	else{
+	else {
 		for(i=1; i<=ry2; i++){
 			if (i==1) mynn =        order(abs(r.yh1:-r.yh2[i]),1)[1]	
 			else      mynn = mynn \ order(abs(r.yh1:-r.yh2[i]),1)[1]	
 		}	
 	}
-	return(*r.y[mynn])
+	return(r.y[mynn])
 }
 
 //Function, selects a random set of observed y, of length rows unobserved. 
@@ -379,7 +429,7 @@ real colvector lpmm_Mpmm (struct lpmminfo scalar r) {
 real colvector lpmm_randomleo(struct lpmminfo scalar r) {
 	
 	real matrix tosort
-	
+	r.myy = r.y
 	r.dim  = rows(r.yh2)
 	//random sample of y
 	tosort      = sort((runningsum(J(r.dim,1,1)),r.yh2),2)
@@ -390,52 +440,24 @@ real colvector lpmm_randomleo(struct lpmminfo scalar r) {
 }	
 
 
-real matrix lpmm_sampleepsi( struct lpmminfo scalar r, 
-														 | transmorphic f) {
 
-	real scalar n 
-	real matrix sige2, eps
-	
-	if (args() == 1) { // for lpmm_getmyboot
-		n   = r.sim
-		eps = r.myy
-	}
-	else {     // for lpmm_randomleo() and lpmm_Mpmm()
-	  n   = f
-		eps = *r.y
-	}
-	
-	sige2 = J(r.dim,n,0)
-	N = rows(eps)
-	if (cols(eps)==1) for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(N*runiform(dim,1)),1]
-	else              for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(N*runiform(dim,1)),i]
-	return(sige2)	
-}
-
-//Function for bootstrap permutation vectors
-real matrix lpmm_getmyboot(struct lpmminfo scalar r) {
-		
-	
-	real scalar rr
-	
-	r.info  = panelsetup(*r.psu,1)
-	r.index = runningsum(J(rows(*r.psu),1,1))
-	
-	rr = rows(info)
-	
-	for(i=1; i<=rr; i++){
-		m = info[i,1],1 \ info[i,2],1
-		r.indexm = r.index[|m|]
-		r.dim = rows(r.indexm)
-		if (i==1) r.ind =         lpmm_sampleepsi(r)
-		else      r.ind = r.ind \ lpmm_sampleepsi(r)
-	}
-	
-	return(r.ind)
-}	
+end 
 
 
 
+
+exit
+/* End of do-file */
+
+><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><
+
+Notes:
+1.
+2.
+3.
+
+
+Version Control:
 
 //-----------------------------------------------------
 	
@@ -499,7 +521,75 @@ real matrix lpmm_getmyboot(struct lpmminfo scalar r) {
 		
 		return(_X)
 	}	
-end
 
 
 
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+struct lpmminfo scalar lpmmset(struct lpmmempty scalar e) {
+	struct lpmminfo scalar r
+	
+	r.y    = &e.y
+	r.x    = &e.x
+	r.x1   = &e.x1
+	r.w    = &e.w 
+	r.w1   = &e.w1
+	r.b    = &e.b
+	
+	if (st_local("sorty") != "") r.sorty = 1
+	else                         r.sorty = 0
+	
+	if (st_local("mlong") != "") r.mlong = 1
+	else                         r.mlong = 0
+	
+	r.knn   = strtoreal(st_local("knn"))
+  r.sim   = strtoreal(st_local("add"))
+	
+	r.ry1 = r.ry2 = .z
+	return(r)
+}
+
+
+
+void lpmm_iteration(struct lpmminfo scalar r,
+                    string scalar touse,
+									  string scalar YXw,
+									  real   scalar i) {
+	
+	real matrix myvar
+	
+	st_view(myvar=., .,YXw, touse)
+	myvar[.,.] = myvar[r.ind[.,i],.]
+	 
+}
+
+
+void lpmm_load(struct lpmmempty scalar e,
+               string scalar BB, 
+               string scalar chosen,
+							 string scalar touse1,
+							 string scalar touse2,
+							 string scalar depvar,
+							 string scalar wi) {
+ 
+	real matrix     b
+	
+	e.b = st_matrix(BB)
+	st_view(e.x    =., ., chosen , touse1)
+	st_view(e.w    =., ., wi     , touse1)
+	st_view(e.y    =., ., depvar , touse1)
+	st_view(e.x1   =., ., chosen , touse2)
+	st_view(e.w1   =., ., wi     , touse2)
+
+}

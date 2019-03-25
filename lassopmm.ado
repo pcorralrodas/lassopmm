@@ -98,7 +98,7 @@ qui{
 	
 	set seed `seed'	
 	noi mata: r = lpmmset()         ;  /* 
-         */ r = lpmm_getmyboot(r, "`_group'", "`touse'")
+         */ lpmm_getmyboot(r, "`_group'", "`touse'")
 	
 	
 *===============================================================================
@@ -301,7 +301,7 @@ void lpmm_load(struct lpmm scalar r,
 
 
 //Function for bootstrap permutation vectors
-struct lpmm scalar lpmm_getmyboot(struct lpmm scalar r, 
+void lpmm_getmyboot(struct lpmm scalar r, 
                     string scalar group,
 										string scalar touse) {
 		
@@ -320,8 +320,6 @@ struct lpmm scalar lpmm_getmyboot(struct lpmm scalar r,
 		if (i==1) r.ind =         lpmm_sampleepsi(r)
 		else      r.ind = r.ind \ lpmm_sampleepsi(r)
 	}
-	
-	return(r)
 }	
 
 real matrix lpmm_sampleepsi( struct lpmm scalar r, 

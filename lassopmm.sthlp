@@ -28,7 +28,10 @@ uniqid(varlist) add(integer) [{it:options}]
 
 {synopt:{opt SORTy}}method which takes a random draw of the observed dependent variable, 
 sorts it and matches to the sorted yhat results for the non-observed data. When not specified, the default, pmm is used.{p_end}
-{synopt:{opt psu(varlist)}}varlist for psu bootstrapping of data{p_end}
+{synopt:{opt psu(varlist)}}specifies the variables identifying resampling clusters.  If psu() is specified, the sample drawn during each replication is a bootstrap sample of clusters, and exp must be less than or equal to N_c (the number of clusters identified by the psu() option).  If strata() is also specified, exp must be less than or equal to the number of within-strata clusters.{p_end}
+{synopt:{opt strata(varlist)}}  specifies the variables identifying strata.  If strata() is specified,
+        bootstrap samples are selected within each stratum, and exp must be less than or equal
+        to _N within the defined strata.{p_end}
 {synopt:{opt lambda(real)}}penalty placed on larger coefficients — by default found 
 by cross-validation {p_end}
 {synopt:{opt numfolds(integer)}}number of folds used when cross-validating lambda or 
@@ -38,6 +41,7 @@ cross-validation{p_end}
 {synopt:{opt knn(integer)}}number of closest observations to draw result from {p_end}
 {synopt:{opt seed(integer)}}Seed to ensure replicability, if not specified it uses 
 the current seed's state. {p_end}
+{synopt:{opt addvars(varlist numeric)}}Optional and allows the PMM match to bring over other variables into the imputation.{p_end}
 {synopt:{opt NOIsily}}Display results of lassoregress{p_end}
 
 {p 2 2 1}
@@ -87,17 +91,17 @@ the current seed's state. {p_end}
 {title:Authors:}
 
 {pstd}
-Raul Andres Castaneda{break}
-The World Bank - Poverty and Equity Global Practice {break}
-Washington, DC{break}
-acastaneda@worldbank.org{p_end}
-
-{pstd}
 Paul Corral{break}
 The World Bank - Poverty and Equity Global Practice {break}
 Washington, DC{break}
 Corresponding author{break} 
 pcorralrodas@worldbank.org{p_end}
+
+{pstd}
+Raul Andres Castaneda{break}
+The World Bank - Poverty and Equity Global Practice {break}
+Washington, DC{break}
+acastaneda@worldbank.org{p_end}
 
 {pstd}
 Leonardo Ramiro Lucchetti{break}

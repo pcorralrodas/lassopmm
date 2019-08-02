@@ -1,7 +1,7 @@
 set more off
 set matastrict off
 clear all
-run "C:\Users\WB378870\OneDrive - WBG\000.my_ados\lassopmm\lassopmm_bs.ado"
+run "C:\Users\WB378870\OneDrive - WBG\000.my_ados\lassopmm\lassopmm.ado"
 set seed 5678
 sysuse auto, clear
 
@@ -37,6 +37,6 @@ mi register imputed price
 
 
 
-lassopmm `_y' `_x' [aw=weight], knn(1) add(10)  psu(psu) seed(12388) uniqid(_numobs11) 
+lassopmm `_y' `_x' [aw=weight], knn(1) add(10)  psu(psu) seed(12388) uniqid(_numobs11) putin(foreign) postlasso
 mi estimate: mean price if samples==1 [aw=weight] 
 

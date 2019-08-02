@@ -1,4 +1,4 @@
-*! version 0.2 December27-2018
+*! version 0.2 July 31-2018
 *! R. Andres Castaneda - acastaneda@worldbank.org
 *! Paul Corral - pcorralrodas@worldbank.org  -- Corresponding author
 *! Leonardo Lucchetti - llucchetti@worldbank.org
@@ -7,7 +7,7 @@
 
 cap program drop lassopmm
 program define lassopmm, eclass byable(recall)
-	version 11, missing
+	version 13, missing
 #delimit;
 	syntax varlist(min=2 numeric fv) [if] [in] [aw],
 		uniqid(varlist)
@@ -25,6 +25,7 @@ program define lassopmm, eclass byable(recall)
 		NOIsily
 		EPSIlon(real 0.001) 
 		postlasso
+		putin(varlist numeric)
 	];
 #delimit cr
 set more off
@@ -33,6 +34,9 @@ qui{
 *===============================================================================
 // 1. HOUSE KEEPING
 *===============================================================================
+	//Check lassoregress
+	cap which lassoregress
+	if (_rc) net install elasticregress
 
 	//Mlong?
 	local mlong `_dta[_mi_style]'
@@ -44,11 +48,17 @@ qui{
 		exit
 	}
 	
+	if ("`putin'"!="" & "`postlasso'"==""){
+		dis as error "putin option can only be used with postlasso"
+		error 199
+		exit
+	}
+	
 	//mark sample for use
 	marksample touse
 	
 	// Mark for the other variables in the estimation
-	foreach j of varlist `psu' `uniqid'{
+	foreach j of varlist `psu' `uniqid' `putin'{
 		replace `touse' = 0 if missing(`j')
 	}
 		
@@ -72,7 +82,10 @@ qui{
 		save `target1'
 	restore
 	
-	if ("`_dta[_mi_ivars]'"!="`depvar'"){
+	local isitin `_dta[_mi_ivars]' 
+	local isitin : list isitin & depvar
+	
+	if ("`isitin'"==""){
 		dis as error "You must mi register `depvar' as imputed before using this command"	
 		error 198
 		exit
@@ -102,7 +115,7 @@ qui{
 *===============================================================================
 // 2.5 Ensure that add vars only works with knn
 *===============================================================================
-
+/*
 	if ("`addvars'"!="") {	
 		if ("`sorty'"!=""){
 			dis as error "The addvars() option only works when sorty is not specified"
@@ -110,7 +123,7 @@ qui{
 			exit 
 		}		
 	}
-	
+*/	
 *===============================================================================
 // 3. Run lasso and imputation on different bootstrapped data
 *===============================================================================
@@ -121,13 +134,6 @@ qui{
 		bsample if `touse'==1, cluster(`psu') strata(`strata')
 		append using `target1', force
 		
-
-		/*
-		if ("`addvars'"!="") mata: st_view(myvar=., ., "`depvar' `_my_x' `wi' `addvars'","`touse'")
-		else                 mata: st_view(myvar=., ., "`depvar' `_my_x' `wi'","`touse'")
-		mata: myvar[.,.] = myvar[ind[.,`i'],.]
-		*/
-
 		if ("`noisily'"!="") noi:lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
 		else                 lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
 		tempname _beta BB
@@ -163,6 +169,16 @@ qui{
 				mata: yhat2 = quadcross((x1,J(rows(x1),1,1))',b')
 			}
 			else{
+				if ("`putin'"!=""){
+					local isin: list chosen & putin
+					if ("`isin'"==""){ //If putin have not been chosen for the model, we add them by force...
+						if (`i'==1 & "`noisily'"!="") noi:reg  `depvar' `putin' if `touse'==1 [aw=`wi'], r
+						mata:st_view(xputin=.,.,"`putin'","`touse1'")
+						mata: x=x,xputin
+						mata:st_view(xputin1=.,.,"`putin'","`touse2'")
+						mata: x1=x1,xputin1
+					}
+				}
 				mata: b = quadcross(invsym(quadcross((x ,J(rows(x), 1,1)),w,(x ,J(rows(x), 1,1)))),quadcross((x ,J(rows(x), 1,1)),w,y))
 				mata: yhat1 = quadcross((x,J(rows(x),1,1))',b) + (1e-12):*runningsum(J(rows(x),1,1))
 				mata: yhat2 =  quadcross((x1,J(rows(x1),1,1))',b)
@@ -171,17 +187,17 @@ qui{
 		if (`i'==1){
 			if ("`addvars'"!="") mata: y = y,add
 			if ("`sorty'"=="")   mata: y1 = y[_Mpmm(yhat1, yhat2, `knn'),.]
-			else                 mata: y1 = _randomleo(y,yhat2)
+			else                 noi:mata: y1 = _randomleo(y,yhat2)
 		}
 		else{
 			if ("`addvars'"!="") mata: y = y,add
 			if ("`mlong'"=="mlong"){
 				if ("`sorty'"=="") mata: y1 = y1 \	y[_Mpmm(yhat1, yhat2, `knn'),.]
-				else               mata: y1 = y1 \	_randomleo(y,yhat2)
+				else               noi:mata: y1 = y1 \	_randomleo(y,yhat2)
 			}	
 			else{	
 				if ("`sorty'"=="") mata: y1 = y1 ,	y[_Mpmm(yhat1, yhat2, `knn'),.]
-				else               mata: y1 = y1 ,	_randomleo(y,yhat2)			
+				else               noi:mata: y1 = y1 ,	_randomleo(y,yhat2)			
 			}
 		}
 	} //End of sim loop
@@ -192,6 +208,9 @@ qui{
 		use `mydata', clear
 			tempvar touse2 nn
 			gen `touse2' = `touse'==0 & missing(`depvar')
+			foreach x of local _my_x{
+				replace `touse2' = 0 if missing(`x')
+			}
 			qui:count 
 			local hu0 = r(N)
 				preserve
@@ -210,9 +229,9 @@ qui{
 			}
 			qui: char _dta[_mi_M] `add'
 			qui: char _dta[_mi_n] `hu'
-			qui: char _dta[_mi_N] `hu0'		
+			qui: char _dta[_mi_N] `hu0'	
 			replace `touse2'=`touse2'==1 & _mi_m>0
-			if ("`addvars'"!="") mata: st_store(.,st_varindex(tokens("`depvar' `addvars'")),"`touse2'",y1)				
+			if ("`addvars'"!="") mata: st_store(.,st_varindex(tokens("`depvar' `addvars'")),"`touse2'",y1)
 			else mata: st_store(.,st_varindex(tokens("`depvar'")),"`touse2'",y1)				
 	}
 	else{
@@ -268,12 +287,23 @@ mata
 	// sorts the set and assigns the value to the sorted xb from unobserved
 	function _randomleo(yo, yh2){
 		ry = rows(yh2)
-		//random sample of y
-		tosort      = sort((runningsum(J(ry,1,1)),yh2),2)
-		tosort[.,2] = sort(_f_sampleepsi(1, ry, yo),1)
-		_sort(tosort,1)
+		totcol = (cols(yo)+1)
 		
-		return(tosort[.,2])
+		if (cols(yo)>1){		
+			//random sample of y
+			tosort     = sort((runningsum(J(ry,1,1)),yh2),2)
+			tosort2 = sort(_f_sampleepsi22(1, ry, yo),1)
+			tosort2 = sort((tosort[.,1],tosort2),1)
+			cols(tosort2)
+			return(tosort2[.,2..totcol])
+		}
+		else{
+			tosort      = sort((runningsum(J(ry,1,1)),yh2),2)
+			tosort[.,2] = sort(_f_sampleepsi(1, ry, yo),1)
+			_sort(tosort,1)
+		
+			return(tosort[.,2])
+		}
 	}	
 	//n is the number of simulations, dim is the number of rows of the output, epsi is the source
 	function _f_sampleepsi(real scalar n, real scalar dim, real matrix eps){				  
@@ -284,6 +314,14 @@ mata
 		//for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(rows(eps)*runiform(dim,1)),i]
 		return(sige2)	
 	}
+	function _f_sampleepsi22(real scalar n, real scalar dim, real matrix eps){				  
+		
+		N = rows(eps)
+        sige2=eps[ceil(N*runiform(dim,1)),.]
+		//for(i=1; i<=n; i++) sige2[.,i]=eps[ceil(rows(eps)*runiform(dim,1)),i]
+		return(sige2)	
+	}
+	
 	//Function for bootstrap permutation vectors
 	function _getmyboot(_psu,sim){
 		info = panelsetup(_psu,1)

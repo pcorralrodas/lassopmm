@@ -26,6 +26,7 @@ program define lassopmm, eclass byable(recall)
 		EPSIlon(real 0.001) 
 		postlasso
 		putin(varlist numeric)
+		morelassopt(string)
 	];
 #delimit cr
 set more off
@@ -134,8 +135,8 @@ qui{
 		bsample if `touse'==1, cluster(`psu') strata(`strata')
 		append using `target1', force
 		
-		if ("`noisily'"!="") noi:lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
-		else                 lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon')
+		if ("`noisily'"!="") noi:lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon') `morelassopt'
+		else                 lassoregress `depvar' `_my_x' if `touse'==1 [aw=`wi'], numlambda(`numlambda') numfolds(`numfolds') lambda(`lambda') epsilon(`epsilon') `morelassopt'
 		tempname _beta BB
 		tempvar touse1 touse2
 		

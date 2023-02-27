@@ -1,0 +1,14 @@
+v 1
+
+d 'LASSOPMM': PMM enabled Lasso regression for multiple imputation
+d
+d PMM enabled Lasso regression for multiple imputation, command makes use of Wilbur Townsend's lassoregress command.
+d
+d Authors: Paul Corral, Leonardo Luccheti, Andres Castaneda - WB
+d
+d Distribution-Date: 08jun2019
+  
+f l/lassopmm.ado
+f l/lassopmm.sthlp
+
+e

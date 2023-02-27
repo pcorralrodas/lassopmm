@@ -1,0 +1,13 @@
+*! v 2           <09June2019>
+v 3
+
+d LassoPMM installation
+d 
+h
+p lassopmm      (Ado)    PMM enabled Lasso regression for multiple imputation, command makes use of Wilbur Townsend's lassoregress command
+
+        
+*next
+h
+d 
+e
